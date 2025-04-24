@@ -1,19 +1,18 @@
 import { Track, TrackData } from '@/types/music';
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest } from 'next/server';
 
-export default async function GET(
-    req: NextApiRequest,
-    res: NextApiResponse<Track[] | { error: string }>
-) {
-
-    const { query } = req.query;
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get('query');
 
     if (!query || typeof query !== 'string') {
-        return res.status(400).json({ error: 'Query parameter is required' });
+        return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
 
     try {
-        // AudioDB API - search by artist name
         const response = await fetch(
             `https://theaudiodb.com/api/v1/json/2/search.php?s=${encodeURIComponent(query)}`
         );
@@ -24,13 +23,15 @@ export default async function GET(
 
         const data = await response.json();
 
-        // If no artists found
         if (!data.artists) {
-            return res.status(200).json([]);
+            return new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
         }
 
-        // Get tracks for the first artist found
         const artistId = data.artists[0].idArtist;
+
         const tracksResponse = await fetch(
             `https://theaudiodb.com/api/v1/json/2/mvid.php?i=${artistId}`
         );
@@ -41,9 +42,11 @@ export default async function GET(
 
         const tracksData = await tracksResponse.json();
 
-        // If no tracks found
         if (!tracksData.mvids) {
-            return res.status(200).json([]);
+            return new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
         }
 
         const tracks: Track[] = tracksData.mvids.map((track: TrackData) => ({
@@ -51,15 +54,21 @@ export default async function GET(
             name: track.strTrack,
             artist: data.artists[0].strArtist,
             album: track.strAlbum || 'Unknown Album',
-            duration: 0, // AudioDB doesn't provide duration in this endpoint
+            duration: 0,
             imageUrl: track.strTrackThumb || data.artists[0].strArtistThumb || '/placeholder-album.jpg',
             previewUrl: '',
             youtubeId: track.strMusicVid ? track.strMusicVid.split('v=')[1] : ''
         }));
 
-        res.status(200).json(tracks);
+        return new Response(JSON.stringify(tracks), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        });
     } catch (error) {
         console.error('Error fetching from AudioDB API:', error);
-        res.status(500).json({ error: 'Failed to fetch music data' });
+        return new Response(JSON.stringify({ error: 'Failed to fetch music data' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
 }
